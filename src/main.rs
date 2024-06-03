@@ -23,9 +23,12 @@ fn main() -> Result<()> {
     let mut description = String::new();
     let mut detail = vec![];
     let mut is_running = false;
+    let mut is_paused = false;
+    let mut running_duration = Duration::seconds(0);
+    let mut last_start_time = Local::now();
 
     loop {
-        println!("Enter 'start' to start the timer, 'stop' to stop it, 'exit' to exit, or 'show <number>' to display last <number> entries:");
+        println!("Enter 'start' to start the timer, 'stop' to stop it, 'pause' to pause it, 'resume' to resume it, 'exit' to exit, or 'show <number>' to display last <number> entries:");
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
@@ -55,21 +58,45 @@ fn main() -> Result<()> {
                     .read_line(&mut description)
                     .expect("Failed to read line");
                 start_time = Local::now();
+                last_start_time = start_time;
                 is_running = true;
+                is_paused = false;
+                running_duration = Duration::seconds(0);
+                detail.clear();
                 println!(
                     "Timer started for: {} at {}",
                     description.trim(),
                     start_time
                 );
             }
+            "pause" if is_running && !is_paused => {
+                let pause_time = Local::now();
+                let elapsed = pause_time - last_start_time;
+                running_duration = running_duration + elapsed;
+                is_paused = true;
+                println!(
+                    "Timer paused for: {} at {}. Total running time: {}",
+                    description.trim(),
+                    pause_time,
+                    format_duration(running_duration)
+                );
+            }
+            "resume" if is_running && is_paused => {
+                last_start_time = Local::now();
+                is_paused = false;
+                println!("Timer resumed for: {} at {}", description.trim(), last_start_time);
+            }
             "stop" if is_running => {
                 let end_time = Local::now();
-                let duration = end_time - start_time;
+                if !is_paused {
+                    let elapsed = end_time - last_start_time;
+                    running_duration = running_duration + elapsed;
+                }
                 println!(
-                    "Timer stopped for: {} at {}. Total time: {}",
+                    "Timer stopped for: {} at {}. Total running time: {}",
                     description.trim(),
                     end_time,
-                    format_duration(duration)
+                    format_duration(running_duration)
                 );
                 conn.execute(
                     "INSERT INTO timer (category, description, detail, start_time, end_time, total_time_seconds)
@@ -80,10 +107,11 @@ fn main() -> Result<()> {
                         detail.join("\n"),
                         start_time.to_rfc3339(),
                         end_time.to_rfc3339(),
-                        duration.num_seconds(),
+                        running_duration.num_seconds(),
                     ],
                 )?;
                 is_running = false;
+                is_paused = false;
             }
             "exit" => break,
             _ => match is_running {
