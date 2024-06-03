@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Local};
+use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone};
 use rusqlite::{params, Connection, Result};
 use std::io;
 
@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     let mut last_start_time = Local::now();
 
     loop {
-        println!("Enter 'start' to start the timer, 'stop' to stop it, 'pause' to pause it, 'resume' to resume it, 'exit' to exit, or 'show <number>' to display last <number> entries:");
+        println!("Enter 'start' to start the timer, 'stop' to stop it, 'pause' to pause it, 'resume' to resume it, 'manual' to manually input an event, 'exit' to exit, or 'show <number>' to display last <number> entries:");
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
@@ -84,7 +84,11 @@ fn main() -> Result<()> {
             "resume" if is_running && is_paused => {
                 last_start_time = Local::now();
                 is_paused = false;
-                println!("Timer resumed for: {} at {}", description.trim(), last_start_time);
+                println!(
+                    "Timer resumed for: {} at {}",
+                    description.trim(),
+                    last_start_time
+                );
             }
             "stop" if is_running => {
                 let end_time = Local::now();
@@ -113,6 +117,67 @@ fn main() -> Result<()> {
                 is_running = false;
                 is_paused = false;
             }
+            "manual" => {
+                println!("Enter the activity category:");
+                io::stdin()
+                    .read_line(&mut category)
+                    .expect("Failed to read line");
+                println!("Enter the activity description:");
+                io::stdin()
+                    .read_line(&mut description)
+                    .expect("Failed to read line");
+
+                println!("Enter the start time (e.g., '2024-06-01 14:30'):");
+                let mut start_input = String::new();
+                io::stdin()
+                    .read_line(&mut start_input)
+                    .expect("Failed to read line");
+                let start_input = start_input.trim();
+                let start_time = match parse_time(start_input) {
+                    Ok(time) => time,
+                    Err(e) => {
+                        println!("Error parsing start time: {}", e);
+                        category = "".to_string();
+                        description = "".to_string();
+                        continue;
+                    }
+                };
+
+                println!("Enter the end time (e.g., '2024-06-01 16:30'):");
+                let mut end_input = String::new();
+                io::stdin()
+                    .read_line(&mut end_input)
+                    .expect("Failed to read line");
+                let end_input = end_input.trim();
+                let end_time = match parse_time(end_input) {
+                    Ok(time) => time,
+                    Err(e) => {
+                        println!("Error parsing end time: {}", e);
+                        category = "".to_string();
+                        description = "".to_string();
+                        continue;
+                    }
+                };
+
+                let duration = end_time - start_time;
+                println!(
+                    "Manual entry added for: {}. Total time: {}",
+                    description.trim(),
+                    format_duration(duration)
+                );
+                conn.execute(
+                    "INSERT INTO timer (category, description, detail, start_time, end_time, total_time_seconds)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        category.trim(),
+                        description.trim(),
+                        detail.join("\n"),
+                        start_time.to_rfc3339(),
+                        end_time.to_rfc3339(),
+                        duration.num_seconds(),
+                    ],
+                )?;
+            }
             "exit" => break,
             _ => match is_running {
                 false => println!("Invalid command."),
@@ -124,6 +189,23 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn parse_time(input: &str) -> Result<DateTime<Local>, String> {
+    let formats = [
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+        "%Y/%m/%d %H:%M:%S",
+    ];
+
+    for format in &formats {
+        if let Ok(parsed) = NaiveDateTime::parse_from_str(input, format) {
+            return Ok(Local.from_local_datetime(&parsed).unwrap());
+        }
+    }
+
+    Err("Failed to parse time".to_string())
 }
 
 fn format_duration(duration: Duration) -> String {
