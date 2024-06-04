@@ -114,6 +114,9 @@ fn main() -> Result<()> {
                         running_duration.num_seconds(),
                     ],
                 )?;
+                category = String::new();
+                description = String::new();
+                detail = vec![];
                 is_running = false;
                 is_paused = false;
             }
