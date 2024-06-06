@@ -180,6 +180,8 @@ fn main() -> Result<()> {
                         duration.num_seconds(),
                     ],
                 )?;
+                category = "".to_string();
+                description = "".to_string();
             }
             "exit" => break,
             _ => match is_running {
